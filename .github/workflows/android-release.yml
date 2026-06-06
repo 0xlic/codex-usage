@@ -1,0 +1,105 @@
+name: Android Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-release-apks:
+    name: Build release APKs
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Configure release signing
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          SIGNING_SECRET_COUNT=0
+
+          for secret in \
+            "$ANDROID_KEYSTORE_BASE64" \
+            "$ANDROID_KEYSTORE_PASSWORD" \
+            "$ANDROID_KEY_ALIAS" \
+            "$ANDROID_KEY_PASSWORD"; do
+            if [ -n "$secret" ]; then
+              SIGNING_SECRET_COUNT=$((SIGNING_SECRET_COUNT + 1))
+            fi
+          done
+
+          if [ "$SIGNING_SECRET_COUNT" -eq 0 ]; then
+            echo "No release keystore configured; APKs will be signed with the debug key for sideload installs."
+          elif [ "$SIGNING_SECRET_COUNT" -ne 4 ]; then
+            echo "::error::Configure all release signing secrets or leave all of them empty."
+            exit 1
+          else
+            KEYSTORE_FILE="$RUNNER_TEMP/release-keystore.jks"
+            echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_FILE"
+            {
+              echo "CODEX_USAGE_KEYSTORE_FILE=$KEYSTORE_FILE"
+              echo "CODEX_USAGE_KEYSTORE_PASSWORD=$ANDROID_KEYSTORE_PASSWORD"
+              echo "CODEX_USAGE_KEY_ALIAS=$ANDROID_KEY_ALIAS"
+              echo "CODEX_USAGE_KEY_PASSWORD=$ANDROID_KEY_PASSWORD"
+            } >> "$GITHUB_ENV"
+          fi
+
+      - name: Build APKs
+        run: ./gradlew --no-daemon clean assembleRelease
+
+      - name: Prepare release files
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          mkdir -p release-apks
+
+          for apk in app/build/outputs/apk/release/*.apk; do
+            file_name="$(basename "$apk")"
+            abi="${file_name#app-}"
+            abi="${abi%-release.apk}"
+
+            if [ "$file_name" = "app-release.apk" ]; then
+              abi="universal"
+            fi
+
+            cp "$apk" "release-apks/codex-usage-${VERSION}-${abi}.apk"
+          done
+
+          shasum -a 256 release-apks/*.apk > release-apks/SHA256SUMS.txt
+          ls -lh release-apks
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: codex-usage-apks-${{ github.ref_name }}
+          path: release-apks/*
+
+      - name: Publish GitHub Release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" release-apks/* --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" release-apks/* \
+              --title "CodeX Usage Widget $GITHUB_REF_NAME" \
+              --generate-notes
+          fi

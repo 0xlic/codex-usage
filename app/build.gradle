@@ -2,16 +2,51 @@ plugins {
     id "com.android.application"
 }
 
+def gitHubTag = System.getenv("GITHUB_REF_TYPE") == "tag" ? System.getenv("GITHUB_REF_NAME") : null
+def ciVersionName = gitHubTag ? gitHubTag.replaceFirst(/^v/, "") : "1.0"
+def ciVersionCode = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").replaceAll("[^0-9]", "").toInteger()
+def releaseKeystoreFile = System.getenv("CODEX_USAGE_KEYSTORE_FILE")
+def hasReleaseSigning = releaseKeystoreFile
+        && System.getenv("CODEX_USAGE_KEYSTORE_PASSWORD")
+        && System.getenv("CODEX_USAGE_KEY_ALIAS")
+        && System.getenv("CODEX_USAGE_KEY_PASSWORD")
+
 android {
     namespace "com.lichen.codexusage"
     compileSdk 35
+
+    signingConfigs {
+        release {
+            if (hasReleaseSigning) {
+                storeFile file(releaseKeystoreFile)
+                storePassword System.getenv("CODEX_USAGE_KEYSTORE_PASSWORD")
+                keyAlias System.getenv("CODEX_USAGE_KEY_ALIAS")
+                keyPassword System.getenv("CODEX_USAGE_KEY_PASSWORD")
+            }
+        }
+    }
 
     defaultConfig {
         applicationId "com.lichen.codexusage"
         minSdk 23
         targetSdk 35
-        versionCode 1
-        versionName "1.0"
+        versionCode ciVersionCode
+        versionName ciVersionName
+    }
+
+    splits {
+        abi {
+            enable true
+            reset()
+            include "armeabi-v7a", "arm64-v8a", "x86", "x86_64"
+            universalApk true
+        }
+    }
+
+    buildTypes {
+        release {
+            signingConfig hasReleaseSigning ? signingConfigs.release : signingConfigs.debug
+        }
     }
 }
 

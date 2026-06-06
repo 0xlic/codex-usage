@@ -35,8 +35,10 @@ https://chatgpt.com/backend-api/wham/usage
 - Android Gradle Plugin 8.7.3
 - Java
 - AndroidX WorkManager 2.10.0
-- Minimum SDK 23
-- Target SDK 35
+- Minimum SDK 23（Android 6.0 Marshmallow）
+- Target SDK 35（Android 15）
+
+最低支持 Android 6.0/API 23。项目当前核心能力包括桌面小组件、SharedPreferences、本地剪贴板、网络请求和 WorkManager 后台刷新；壁纸取色等较新系统能力已经在代码中按 API 等级做运行时判断并提供降级路径，因此不需要为了这些增强特性提高最低版本。
 
 ## 构建
 
@@ -51,6 +53,40 @@ https://chatgpt.com/backend-api/wham/usage
 ```text
 app/build/outputs/apk/debug/app-debug.apk
 ```
+
+Release 构建会生成通用 APK 以及常见 ABI 的 APK：
+
+```bash
+./gradlew assembleRelease
+```
+
+```text
+app/build/outputs/apk/release/
+```
+
+包括 `universal`、`arm64-v8a`、`armeabi-v7a`、`x86`、`x86_64`。本项目没有 native 库，通用 APK 可安装在这些 CPU 架构的设备上；ABI 包主要用于发布页按设备架构下载。
+
+## 自动发版
+
+仓库包含 GitHub Actions 工作流 `.github/workflows/android-release.yml`。推送 `v*` tag 后会自动构建 release APK，上传工作流产物，并发布到对应 GitHub Release。
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+CI 会从 tag 生成 `versionName`，例如 `v1.0.0` 对应 `1.0.0`；`versionCode` 使用 GitHub Actions run number。
+
+如需使用正式签名，在仓库 Secrets 中配置：
+
+```text
+ANDROID_KEYSTORE_BASE64
+ANDROID_KEYSTORE_PASSWORD
+ANDROID_KEY_ALIAS
+ANDROID_KEY_PASSWORD
+```
+
+未配置签名密钥时，CI 会使用 debug key 签名 release APK，便于 GitHub Release 侧载安装测试；正式分发建议配置独立 release keystore。
 
 ## 使用
 
