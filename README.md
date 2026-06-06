@@ -11,6 +11,12 @@ CodeX Usage Widget 是一个原生 Android 桌面小组件，用于展示 ChatGP
 - 展示账号、最近同步时间、剩余额度百分比和重置倒计时。
 - 支持点击小组件打开应用，或通过刷新按钮触发后台同步。
 
+## 界面预览
+
+| 登录界面 | 登录后界面 | 桌面图标和小组件 |
+| --- | --- | --- |
+| <img src="docs/images/login.jpg" alt="登录界面" width="220"> | <img src="docs/images/usage.jpg" alt="登录后界面" width="220"> | <img src="docs/images/widgets.jpg" alt="桌面图标和小组件" width="220"> |
+
 ## 数据接口
 
 项目使用的用量数据来自 ChatGPT Web 后端接口：
