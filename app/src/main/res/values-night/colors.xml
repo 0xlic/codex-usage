@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="codex_bg">#121218</color>
+    <color name="codex_panel">#272630</color>
+    <color name="codex_text">#F0EEF6</color>
+    <color name="codex_muted">#CCC8D7</color>
+    <color name="codex_accent">#C2C7FF</color>
+    <color name="codex_warn">#FFB58D</color>
+    <color name="widget_glass">#991D2030</color>
+    <color name="widget_glass_stroke">#2AFFFFFF</color>
+    <color name="widget_text">#F1F3FF</color>
+    <color name="widget_muted">#C5CAE4</color>
+    <color name="widget_divider">#55FFFFFF</color>
+    <color name="widget_icon_chip">#30364B</color>
+    <color name="widget_blue">#8AB4FF</color>
+    <color name="widget_purple">#AEB5FF</color>
+    <color name="widget_track">#33FFFFFF</color>
+    <color name="widget_online">#72E95A</color>
+</resources>

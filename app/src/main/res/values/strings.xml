@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">CodeX用量</string>
+    <string name="widget_name">CodeX用量</string>
+    <string name="widget_name_2x2">CodeX用量 2x2</string>
+    <string name="widget_name_4x2">CodeX用量 4x2</string>
+    <string name="widget_name_4x4">CodeX用量 4x4</string>
+    <string name="widget_refresh_symbol">↻</string>
+</resources>
