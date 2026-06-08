@@ -16,6 +16,8 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 
 final class CodexUsageClient {
@@ -29,6 +31,8 @@ final class CodexUsageClient {
     private static final String OAUTH_TOKEN_URL = "https://auth.openai.com/oauth/token";
     private static final String DEVICE_REDIRECT_URI = "https://auth.openai.com/deviceauth/callback";
     private static final String USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
+    private static final String ENVIRONMENTS_URL = "https://chatgpt.com/backend-api/wham/environments";
+    private static final String TASKS_URL = "https://chatgpt.com/backend-api/wham/tasks";
     private static final String USER_AGENT = "codex-cli";
 
     private CodexUsageClient() {
@@ -87,13 +91,7 @@ final class CodexUsageClient {
             throw new IOException("请先登录 ChatGPT");
         }
 
-        String accessToken = auth.accessToken;
-        if (!auth.hasFreshAccessToken()) {
-            JSONObject refreshed = refreshAccessToken(auth.refreshToken);
-            accessToken = refreshed.getString("access_token");
-            long expiresAt = computeExpiresAt(refreshed.optLong("expires_in", 3600L));
-            CodexAuthStore.saveAccessToken(context, accessToken, expiresAt);
-        }
+        String accessToken = freshAccessToken(context, auth);
 
         HttpURLConnection connection = openConnection(USAGE_URL, "GET");
         connection.setRequestProperty("Authorization", "Bearer " + accessToken);
@@ -108,6 +106,116 @@ final class CodexUsageClient {
             throw new IOException("用量查询失败: HTTP " + result.statusCode + " " + result.body);
         }
         return parseUsage(new JSONObject(result.body), auth.displayName());
+    }
+
+    static List<CodexEnvironment> fetchEnvironments(Context context) throws IOException, JSONException {
+        CodexAuthStore auth = CodexAuthStore.load(context);
+        if (!auth.isLoggedIn()) {
+            throw new IOException("请先登录 ChatGPT");
+        }
+
+        String accessToken = freshAccessToken(context, auth);
+        HttpURLConnection connection = openConnection(ENVIRONMENTS_URL, "GET");
+        connection.setRequestProperty("Authorization", "Bearer " + accessToken);
+        connection.setRequestProperty("Accept", "application/json");
+        connection.setRequestProperty("User-Agent", USER_AGENT);
+        if (auth.accountId.length() > 0) {
+            connection.setRequestProperty("ChatGPT-Account-Id", auth.accountId);
+        }
+
+        HttpResult result = readResult(connection);
+        if (!result.isSuccess()) {
+            throw new IOException("环境查询失败: HTTP " + result.statusCode + " " + result.body);
+        }
+
+        JSONArray response = new JSONArray(result.body);
+        ArrayList<CodexEnvironment> environments = new ArrayList<>();
+        for (int i = 0; i < response.length(); i++) {
+            JSONObject item = response.optJSONObject(i);
+            if (item == null) {
+                continue;
+            }
+            String id = item.optString("id", "");
+            if (id.length() == 0) {
+                continue;
+            }
+            String label = item.optString("lable", "");
+            if (label.length() == 0) {
+                label = item.optString("label", "");
+            }
+            if (label.length() == 0) {
+                label = id;
+            }
+            environments.add(new CodexEnvironment(id, label));
+        }
+        return environments;
+    }
+
+    static void refreshFiveHourWindow(Context context, String environmentId)
+            throws IOException, JSONException {
+        CodexAuthStore auth = CodexAuthStore.load(context);
+        if (!auth.isLoggedIn()) {
+            throw new IOException("请先登录 ChatGPT");
+        }
+        if (environmentId == null || environmentId.length() == 0) {
+            throw new IOException("请先选择 Codex Cloud 环境");
+        }
+
+        JSONObject newTask = new JSONObject();
+        newTask.put("environment_id", environmentId);
+        newTask.put("branch", "main");
+        newTask.put("run_environment_in_qa_mode", false);
+
+        JSONObject metadata = new JSONObject();
+        metadata.put("best_of_n", 1);
+
+        JSONObject textContent = new JSONObject();
+        textContent.put("content_type", "text");
+        textContent.put("text", "hello");
+
+        JSONArray content = new JSONArray();
+        content.put(textContent);
+
+        JSONObject message = new JSONObject();
+        message.put("type", "message");
+        message.put("role", "user");
+        message.put("content", content);
+
+        JSONArray inputItems = new JSONArray();
+        inputItems.put(message);
+
+        JSONObject body = new JSONObject();
+        body.put("new_task", newTask);
+        body.put("metadata", metadata);
+        body.put("input_items", inputItems);
+
+        String accessToken = freshAccessToken(context, auth);
+        HttpURLConnection connection = openConnection(TASKS_URL, "POST");
+        connection.setRequestProperty("Authorization", "Bearer " + accessToken);
+        connection.setRequestProperty("Accept", "application/json");
+        connection.setRequestProperty("Content-Type", "application/json");
+        connection.setRequestProperty("User-Agent", USER_AGENT);
+        if (auth.accountId.length() > 0) {
+            connection.setRequestProperty("ChatGPT-Account-Id", auth.accountId);
+        }
+        writeBody(connection, body.toString());
+
+        HttpResult result = readResult(connection);
+        if (!result.isSuccess()) {
+            throw new IOException("5 小时窗口刷新失败: HTTP " + result.statusCode + " " + result.body);
+        }
+    }
+
+    private static String freshAccessToken(Context context, CodexAuthStore auth)
+            throws IOException, JSONException {
+        if (auth.hasFreshAccessToken()) {
+            return auth.accessToken;
+        }
+        JSONObject refreshed = refreshAccessToken(auth.refreshToken);
+        String accessToken = refreshed.getString("access_token");
+        long expiresAt = computeExpiresAt(refreshed.optLong("expires_in", 3600L));
+        CodexAuthStore.saveAccessToken(context, accessToken, expiresAt);
+        return accessToken;
     }
 
     private static JSONObject exchangeAuthorizationCode(String code, String codeVerifier)
@@ -368,6 +476,21 @@ final class CodexUsageClient {
             this.refreshToken = refreshToken;
             this.accessToken = accessToken;
             this.accessExpiresAtMillis = accessExpiresAtMillis;
+        }
+    }
+
+    static final class CodexEnvironment {
+        final String id;
+        final String label;
+
+        CodexEnvironment(String id, String label) {
+            this.id = id;
+            this.label = label;
+        }
+
+        @Override
+        public String toString() {
+            return label;
         }
     }
 

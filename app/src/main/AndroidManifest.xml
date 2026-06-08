@@ -21,6 +21,18 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".SettingsActivity"
+            android:exported="false" />
+
+        <receiver
+            android:name=".FiveHourWindowRefreshReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.lichen.codexusage.ACTION_REFRESH_FIVE_HOUR_WINDOW" />
+            </intent-filter>
+        </receiver>
+
         <receiver
             android:name=".CodeXWidgetProvider"
             android:exported="true"

@@ -64,6 +64,7 @@ public class MainActivity extends Activity {
     private TextView loginCodeText;
     private LinearLayout loginCodePanel;
     private LinearLayout usagePanel;
+    private LinearLayout refreshActions;
     private TextView fivePercentText;
     private TextView fiveResetText;
     private ProgressBar fiveProgress;
@@ -72,6 +73,7 @@ public class MainActivity extends Activity {
     private ProgressBar sevenProgress;
     private Button loginButton;
     private Button refreshButton;
+    private Button refreshFiveHourButton;
     private Button logoutButton;
     private TextView widgetTransparencyValue;
     private SeekBar widgetTransparencySeekBar;
@@ -181,9 +183,29 @@ public class MainActivity extends Activity {
                 ScrollView.LayoutParams.WRAP_CONTENT
         ));
 
+        LinearLayout header = new LinearLayout(this);
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        root.addView(header, matchWrap());
+
         TextView title = text(getString(R.string.app_name), 28, TEXT, Typeface.BOLD);
         title.setIncludeFontPadding(false);
-        root.addView(title, matchWrap());
+        header.addView(title, new LinearLayout.LayoutParams(
+                0,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                1
+        ));
+
+        TextView settingsButton = headerActionButton("设置", new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                startActivity(new Intent(MainActivity.this, SettingsActivity.class));
+            }
+        });
+        header.addView(settingsButton, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                dp(44)
+        ));
 
         LinearLayout statusCard = card();
         LinearLayout.LayoutParams statusCardParams = matchWrap();
@@ -273,7 +295,30 @@ public class MainActivity extends Activity {
                 refreshUsage();
             }
         });
-        root.addView(refreshButton, topMargin(18));
+
+        refreshFiveHourButton = primaryButton("刷新 5 小时窗口", new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                refreshFiveHourWindow();
+            }
+        });
+
+        refreshActions = new LinearLayout(this);
+        refreshActions.setOrientation(LinearLayout.HORIZONTAL);
+        refreshActions.setGravity(Gravity.CENTER_VERTICAL);
+        refreshActions.addView(refreshButton, new LinearLayout.LayoutParams(
+                0,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                1
+        ));
+        LinearLayout.LayoutParams fiveHourButtonParams = new LinearLayout.LayoutParams(
+                0,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                1
+        );
+        fiveHourButtonParams.setMargins(dp(10), 0, 0, 0);
+        refreshActions.addView(refreshFiveHourButton, fiveHourButtonParams);
+        root.addView(refreshActions, topMargin(18));
 
         logoutButton = secondaryButton("退出登录", new View.OnClickListener() {
             @Override
@@ -465,6 +510,42 @@ public class MainActivity extends Activity {
         }).start();
     }
 
+    private void refreshFiveHourWindow() {
+        CodexAuthStore auth = CodexAuthStore.load(this);
+        if (!auth.isLoggedIn()) {
+            Toast.makeText(this, "请先登录 ChatGPT", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        final CodexSettingsStore settings = CodexSettingsStore.load(this);
+        if (!settings.fiveHourRefreshEnabled || settings.fiveHourEnvironmentId.length() == 0) {
+            Toast.makeText(this, "请先在设置中打开并选择 Codex Cloud 环境", Toast.LENGTH_LONG).show();
+            renderState();
+            return;
+        }
+
+        setBusy(true, "正在刷新 5 小时窗口...");
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    CodexUsageClient.refreshFiveHourWindow(
+                            MainActivity.this,
+                            settings.fiveHourEnvironmentId
+                    );
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            Toast.makeText(MainActivity.this, "已提交 5 小时窗口刷新", Toast.LENGTH_SHORT).show();
+                            renderState();
+                        }
+                    });
+                } catch (IOException | JSONException e) {
+                    showError("5 小时窗口刷新失败: " + e.getMessage());
+                }
+            }
+        }).start();
+    }
+
     private void openLoginPage() {
         Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(CodexUsageClient.DEVICE_VERIFICATION_URL));
         startActivity(intent);
@@ -479,6 +560,7 @@ public class MainActivity extends Activity {
 
     private void renderState() {
         CodexAuthStore auth = CodexAuthStore.load(this);
+        CodexSettingsStore settings = CodexSettingsStore.load(this);
         UsageState state = UsageState.load(this);
         accountText.setText(auth.displayName());
         statusText.setTextColor(TEXT);
@@ -517,7 +599,12 @@ public class MainActivity extends Activity {
         statusBadge.setTextColor(loggedIn ? SUCCESS : MUTED);
         statusBadge.setBackground(rounded(loggedIn ? SUCCESS_CONTAINER : DISABLED_CONTAINER, 0, 0, 16));
         loginButton.setVisibility(loggedIn ? View.GONE : View.VISIBLE);
+        boolean showFiveHourRefresh = loggedIn
+                && settings.fiveHourRefreshEnabled
+                && settings.fiveHourEnvironmentId.length() > 0;
+        refreshActions.setVisibility(loggedIn ? View.VISIBLE : View.GONE);
         refreshButton.setVisibility(loggedIn ? View.VISIBLE : View.GONE);
+        refreshFiveHourButton.setVisibility(showFiveHourRefresh ? View.VISIBLE : View.GONE);
         logoutButton.setVisibility(loggedIn ? View.VISIBLE : View.GONE);
         if (loginCodeText.getText().length() == 0) {
             loginCodePanel.setVisibility(View.GONE);
@@ -531,6 +618,9 @@ public class MainActivity extends Activity {
         }
         if (refreshButton != null) {
             refreshButton.setEnabled(!busy);
+        }
+        if (refreshFiveHourButton != null) {
+            refreshFiveHourButton.setEnabled(!busy);
         }
         if (message != null && statusText != null) {
             statusText.setText(message);
@@ -604,6 +694,17 @@ public class MainActivity extends Activity {
         button.setMinHeight(dp(52));
         button.setPadding(dp(16), 0, dp(16), 0);
         button.setOnClickListener(listener);
+        return button;
+    }
+
+    private TextView headerActionButton(String value, View.OnClickListener listener) {
+        TextView button = text(value, 14, PRIMARY, Typeface.BOLD);
+        button.setGravity(Gravity.CENTER);
+        button.setMinWidth(dp(64));
+        button.setPadding(dp(14), 0, dp(14), 0);
+        button.setBackground(rounded(PRIMARY_CONTAINER, OUTLINE, 1, 22));
+        button.setOnClickListener(listener);
+        button.setClickable(true);
         return button;
     }
 
