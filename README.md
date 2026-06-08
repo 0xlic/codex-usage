@@ -153,15 +153,19 @@ adb shell am start \
   -n com.lichen.codexusage/.FiveHourWindowRefreshActivity
 ```
 
-该入口只负责入队后台任务并立即关闭，不会打开主界面。仍然保留广播入口作为备选：
+该入口只负责入队后台任务并立即关闭，不会打开主界面。它会读取本地保存的开关和环境 ID；只有开关已打开且环境 ID 非空时才会通过 WorkManager 入队并提交任务。
 
-```bash
-adb shell am broadcast \
-  -a com.lichen.codexusage.ACTION_REFRESH_FIVE_HOUR_WINDOW \
-  -n com.lichen.codexusage/.FiveHourWindowRefreshReceiver
-```
+不推荐使用 `am broadcast` 触发。部分 Android 版本、系统定制或自动化运行环境会限制导出广播的投递或后台执行，可能出现命令返回成功但应用侧没有实际动作的情况。
 
-该动作会读取本地保存的开关和环境 ID；只有开关已打开且环境 ID 非空时才会通过 WorkManager 入队并提交任务。
+### vFlow 自动化示例
+
+可以使用开源自动化工具 [vFlow](https://github.com/ChaoMixian/vFlow) 定时启动 `FiveHourWindowRefreshActivity`。实测配置方式如下：
+
+| vFlow 触发器配置 | vFlow Activity 配置 |
+| --- | --- |
+| <img src="docs/images/vflow-trigger-list.jpg" alt="vFlow 触发器配置" width="220"> | <img src="docs/images/vflow-activity-config.jpg" alt="vFlow Activity 配置" width="220"> |
+
+在 vFlow 的启动步骤中选择目标应用 `CodeX用量`，Activity 选择 `FiveHourWindowRefreshActivity`；启用 Shell 命令选项后，由 vFlow 按定时触发规则启动该 Activity。
 
 ## 5 小时窗口刷新前提条件
 
@@ -189,7 +193,7 @@ app/src/main/java/com/lichen/codexusage/
   UsageState.java                   用量状态模型与持久化
   UsageRefreshWorker.java           后台刷新任务
   UsageRefreshScheduler.java        刷新任务调度
-  FiveHourWindowRefreshReceiver.java 外部刷新 5 小时窗口广播入口
+  FiveHourWindowRefreshReceiver.java 外部刷新 5 小时窗口广播入口（兼容保留，不推荐）
   FiveHourWindowRefreshWorker.java  外部刷新 5 小时窗口后台任务
   CodeXWidgetProvider.java          4x2 小组件入口
   CodeXWidgetCompactProvider.java   2x2 小组件入口
