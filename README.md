@@ -10,6 +10,7 @@ CodeX Usage Widget 是一个原生 Android 桌面小组件，用于展示 ChatGP
 - 提供 2x2 和 4x2 两种桌面小组件尺寸。
 - 展示账号、最近同步时间、剩余额度百分比和重置倒计时。
 - 支持点击小组件打开应用，或通过刷新按钮触发后台同步。
+- 支持配置 Codex Cloud 环境，并手动或通过外部 Intent Action 提交 5 小时窗口刷新任务。
 - 获取登录验证码后自动复制到剪贴板，便于在授权页面直接粘贴。
 - 主界面会读取系统壁纸颜色，并基于壁纸主色生成应用配色。
 - 主界面和桌面小组件均支持系统深色模式。
@@ -20,6 +21,10 @@ CodeX Usage Widget 是一个原生 Android 桌面小组件，用于展示 ChatGP
 | --- | --- | --- |
 | <img src="docs/images/login.jpg" alt="登录界面" width="220"> | <img src="docs/images/usage.jpg" alt="登录后界面" width="220"> | <img src="docs/images/widgets.jpg" alt="桌面图标和小组件" width="220"> |
 
+| 开启 5 小时窗口刷新后的主界面 | 5 小时窗口刷新设置 |
+| --- | --- |
+| <img src="docs/images/usage-5h-refresh.jpg" alt="开启 5 小时窗口刷新后的主界面" width="220"> | <img src="docs/images/settings-5h-refresh.jpg" alt="5 小时窗口刷新设置" width="220"> |
+
 ## 数据接口
 
 项目使用的用量数据来自 ChatGPT Web 后端接口：
@@ -28,7 +33,14 @@ CodeX Usage Widget 是一个原生 Android 桌面小组件，用于展示 ChatGP
 https://chatgpt.com/backend-api/wham/usage
 ```
 
-该接口不是 OpenAI Platform Usage API，可能会随 ChatGPT/Codex Web 后端调整而变化。
+5 小时窗口刷新功能还会使用以下 ChatGPT Web 后端接口：
+
+```text
+GET  https://chatgpt.com/backend-api/wham/environments
+POST https://chatgpt.com/backend-api/wham/tasks
+```
+
+这些接口不是 OpenAI Platform Usage API，可能会随 ChatGPT/Codex Web 后端调整而变化。
 
 ## 技术栈
 
@@ -95,17 +107,29 @@ ANDROID_KEY_PASSWORD
 3. 应用获取登录验证码后会自动复制到剪贴板，在授权页面粘贴即可。
 4. 返回 Android 桌面，添加 `CodeX用量 2x2` 或 `CodeX用量 4x2` 小组件。
 5. 小组件会显示最近一次同步到的 Codex 用量信息，并跟随系统深色模式。
+6. 如需刷新 5 小时窗口，在主界面进入设置，打开 `5 小时窗口刷新`，选择一个 Codex Cloud 环境；保存后主界面会显示 `刷新 5 小时窗口` 按钮。
+
+外部自动化程序也可以通过标准广播触发 5 小时窗口刷新：
+
+```bash
+adb shell am broadcast -a com.lichen.codexusage.ACTION_REFRESH_FIVE_HOUR_WINDOW
+```
+
+该动作会读取本地保存的开关和环境 ID；只有开关已打开且环境 ID 非空时才会提交任务。
 
 ## 项目结构
 
 ```text
 app/src/main/java/com/lichen/codexusage/
   MainActivity.java                 应用主界面与登录流程
-  CodexUsageClient.java             授权、token 刷新与用量查询
+  SettingsActivity.java             5 小时窗口刷新配置页
+  CodexUsageClient.java             授权、token 刷新、用量查询与刷新任务提交
   CodexAuthStore.java               本地认证状态存储
+  CodexSettingsStore.java           本地功能配置存储
   UsageState.java                   用量状态模型与持久化
   UsageRefreshWorker.java           后台刷新任务
   UsageRefreshScheduler.java        刷新任务调度
+  FiveHourWindowRefreshReceiver.java 外部刷新 5 小时窗口广播入口
   CodeXWidgetProvider.java          4x2 小组件入口
   CodeXWidgetCompactProvider.java   2x2 小组件入口
   WidgetUpdater.java                小组件渲染逻辑
@@ -119,5 +143,6 @@ app/src/main/res/
 ## 注意事项
 
 - 本项目依赖 ChatGPT Web 后端的 Codex 用量接口，不保证长期稳定。
+- 5 小时窗口刷新功能依赖 Codex Cloud 环境列表和任务创建接口；如果 Web 后端字段或鉴权方式变化，可能需要同步调整。
 - refresh token 仅保存在应用私有存储中，不会写入仓库或外部文件。
 - `local.properties`、构建产物和 IDE 本地配置已通过 `.gitignore` 排除。
