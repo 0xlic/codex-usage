@@ -78,6 +78,42 @@ app/build/outputs/apk/release/
 
 包括 `universal`、`arm64-v8a`、`armeabi-v7a`、`x86`、`x86_64`。本项目没有 native 库，通用 APK 可安装在这些 CPU 架构的设备上；ABI 包主要用于发布页按设备架构下载。
 
+## 本地签名和安装
+
+Android 不允许用不同签名的 APK 覆盖安装同一个 `applicationId`。本地 `assembleDebug` 使用本机 debug keystore；GitHub Release 如果未配置正式签名，会使用 GitHub runner 上的 debug key；两者签名不同，不能互相覆盖安装。
+
+如果希望 GitHub Release 下载的 APK 和本地打包 APK 可以互相覆盖安装，需要使用同一把 release keystore：
+
+1. 准备一个固定的 release keystore，并妥善保存，不要提交到仓库。
+2. 在本地 `local.properties` 中配置签名信息。
+3. 在 GitHub Secrets 中配置同一把 keystore 和密码。
+4. 本地使用 `assembleRelease` 构建安装包，不要用 `assembleDebug` 覆盖 GitHub Release 包。
+
+本地 `local.properties` 示例：
+
+```properties
+CODEX_USAGE_KEYSTORE_FILE=/absolute/path/codex-usage-release.jks
+CODEX_USAGE_KEYSTORE_PASSWORD=your-store-password
+CODEX_USAGE_KEY_ALIAS=codex-usage
+CODEX_USAGE_KEY_PASSWORD=your-key-password
+CODEX_USAGE_VERSION_NAME=1.1.0-local
+CODEX_USAGE_VERSION_CODE=27116082023
+```
+
+`CODEX_USAGE_VERSION_CODE` 需要大于等于手机上已安装版本的 `versionCode`；GitHub Release 的 `versionCode` 使用 GitHub Actions run number。签名一致但 `versionCode` 更低时，Android 仍会拒绝安装。
+
+配置后本地构建 release APK：
+
+```bash
+./gradlew assembleRelease
+```
+
+如果只是临时测试，也可以先卸载手机上的旧版本再安装本地 APK，但这会清除应用本地数据：
+
+```bash
+adb uninstall com.lichen.codexusage
+```
+
 ## 自动发版
 
 仓库包含 GitHub Actions 工作流 `.github/workflows/android-release.yml`。推送 `v*` tag 后会自动构建 release APK，上传工作流产物，并发布到对应 GitHub Release。
@@ -109,13 +145,36 @@ ANDROID_KEY_PASSWORD
 5. 小组件会显示最近一次同步到的 Codex 用量信息，并跟随系统深色模式。
 6. 如需刷新 5 小时窗口，在主界面进入设置，打开 `5 小时窗口刷新`，选择一个 Codex Cloud 环境；保存后主界面会显示 `刷新 5 小时窗口` 按钮。
 
-外部自动化程序也可以通过标准广播触发 5 小时窗口刷新：
+外部自动化程序建议通过导出的触发 Activity 调用 5 小时窗口刷新：
 
 ```bash
-adb shell am broadcast -a com.lichen.codexusage.ACTION_REFRESH_FIVE_HOUR_WINDOW
+adb shell am start \
+  -a com.lichen.codexusage.ACTION_REFRESH_FIVE_HOUR_WINDOW \
+  -n com.lichen.codexusage/.FiveHourWindowRefreshActivity
 ```
 
-该动作会读取本地保存的开关和环境 ID；只有开关已打开且环境 ID 非空时才会提交任务。
+该入口只负责入队后台任务并立即关闭，不会打开主界面。仍然保留广播入口作为备选：
+
+```bash
+adb shell am broadcast \
+  -a com.lichen.codexusage.ACTION_REFRESH_FIVE_HOUR_WINDOW \
+  -n com.lichen.codexusage/.FiveHourWindowRefreshReceiver
+```
+
+该动作会读取本地保存的开关和环境 ID；只有开关已打开且环境 ID 非空时才会通过 WorkManager 入队并提交任务。
+
+## 5 小时窗口刷新前提条件
+
+使用 `5 小时窗口刷新` 功能前，需要先在 Codex Cloud 网页版完成云端环境配置：
+
+```text
+https://chatgpt.com/codex/cloud
+```
+
+1. 使用 GitHub 连接器连接一个简单的仓库。
+2. 基于该仓库创建一个 Codex Cloud 云端环境。
+
+应用设置页中的 Codex Cloud 环境列表来自当前 ChatGPT 账号已经创建好的云端环境。`刷新 5 小时窗口` 会基于所选云端环境发送一次 Codex 会话任务，因此必须先有可用的云端环境 ID。
 
 ## 项目结构
 
@@ -123,6 +182,7 @@ adb shell am broadcast -a com.lichen.codexusage.ACTION_REFRESH_FIVE_HOUR_WINDOW
 app/src/main/java/com/lichen/codexusage/
   MainActivity.java                 应用主界面与登录流程
   SettingsActivity.java             5 小时窗口刷新配置页
+  FiveHourWindowRefreshActivity.java 外部刷新 5 小时窗口 Activity 入口
   CodexUsageClient.java             授权、token 刷新、用量查询与刷新任务提交
   CodexAuthStore.java               本地认证状态存储
   CodexSettingsStore.java           本地功能配置存储
@@ -130,6 +190,7 @@ app/src/main/java/com/lichen/codexusage/
   UsageRefreshWorker.java           后台刷新任务
   UsageRefreshScheduler.java        刷新任务调度
   FiveHourWindowRefreshReceiver.java 外部刷新 5 小时窗口广播入口
+  FiveHourWindowRefreshWorker.java  外部刷新 5 小时窗口后台任务
   CodeXWidgetProvider.java          4x2 小组件入口
   CodeXWidgetCompactProvider.java   2x2 小组件入口
   WidgetUpdater.java                小组件渲染逻辑

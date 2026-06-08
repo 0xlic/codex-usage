@@ -25,11 +25,26 @@
             android:name=".SettingsActivity"
             android:exported="false" />
 
+        <activity
+            android:name=".FiveHourWindowRefreshActivity"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:noHistory="true"
+            android:theme="@style/AutomationTriggerTheme">
+            <intent-filter>
+                <action android:name="com.lichen.codexusage.ACTION_REFRESH_FIVE_HOUR_WINDOW" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
         <receiver
             android:name=".FiveHourWindowRefreshReceiver"
+            android:enabled="true"
             android:exported="true">
             <intent-filter>
                 <action android:name="com.lichen.codexusage.ACTION_REFRESH_FIVE_HOUR_WINDOW" />
+                <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </receiver>
 

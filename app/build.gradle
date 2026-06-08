@@ -2,14 +2,31 @@ plugins {
     id "com.android.application"
 }
 
+def localProperties = new Properties()
+def localPropertiesFile = rootProject.file("local.properties")
+if (localPropertiesFile.exists()) {
+    localPropertiesFile.withInputStream { stream ->
+        localProperties.load(stream)
+    }
+}
+
+def configValue = { key ->
+    System.getenv(key) ?: localProperties.getProperty(key)
+}
+
 def gitHubTag = System.getenv("GITHUB_REF_TYPE") == "tag" ? System.getenv("GITHUB_REF_NAME") : null
-def ciVersionName = gitHubTag ? gitHubTag.replaceFirst(/^v/, "") : "1.0"
-def ciVersionCode = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").replaceAll("[^0-9]", "").toInteger()
-def releaseKeystoreFile = System.getenv("CODEX_USAGE_KEYSTORE_FILE")
+def appVersionName = configValue("CODEX_USAGE_VERSION_NAME") ?: (gitHubTag ? gitHubTag.replaceFirst(/^v/, "") : "1.0")
+def appVersionCode = (configValue("CODEX_USAGE_VERSION_CODE") ?: System.getenv("GITHUB_RUN_NUMBER") ?: "1")
+        .replaceAll("[^0-9]", "")
+        .toInteger()
+def releaseKeystoreFile = configValue("CODEX_USAGE_KEYSTORE_FILE")
+def releaseKeystorePassword = configValue("CODEX_USAGE_KEYSTORE_PASSWORD")
+def releaseKeyAlias = configValue("CODEX_USAGE_KEY_ALIAS")
+def releaseKeyPassword = configValue("CODEX_USAGE_KEY_PASSWORD")
 def hasReleaseSigning = releaseKeystoreFile
-        && System.getenv("CODEX_USAGE_KEYSTORE_PASSWORD")
-        && System.getenv("CODEX_USAGE_KEY_ALIAS")
-        && System.getenv("CODEX_USAGE_KEY_PASSWORD")
+        && releaseKeystorePassword
+        && releaseKeyAlias
+        && releaseKeyPassword
 
 android {
     namespace "com.lichen.codexusage"
@@ -19,9 +36,9 @@ android {
         release {
             if (hasReleaseSigning) {
                 storeFile file(releaseKeystoreFile)
-                storePassword System.getenv("CODEX_USAGE_KEYSTORE_PASSWORD")
-                keyAlias System.getenv("CODEX_USAGE_KEY_ALIAS")
-                keyPassword System.getenv("CODEX_USAGE_KEY_PASSWORD")
+                storePassword releaseKeystorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
             }
         }
     }
@@ -30,8 +47,8 @@ android {
         applicationId "com.lichen.codexusage"
         minSdk 23
         targetSdk 35
-        versionCode ciVersionCode
-        versionName ciVersionName
+        versionCode appVersionCode
+        versionName appVersionName
     }
 
     splits {
