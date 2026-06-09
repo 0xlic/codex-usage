@@ -57,8 +57,8 @@ public final class FiveHourWindowRefreshWorker extends Worker {
             Log.i(TAG, "5 hour refresh task created");
             return Result.success();
         } catch (IOException | JSONException e) {
-            Log.e(TAG, "5 hour refresh failed", e);
-            return Result.retry();
+            Log.e(TAG, "5 hour refresh failed, not retrying to avoid duplicate cloud tasks", e);
+            return Result.failure();
         }
     }
 }
